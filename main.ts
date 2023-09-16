@@ -1,116 +1,109 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting } from 'obsidian';
 
-// Remember to rename these classes and interfaces!
-
-interface MyPluginSettings {
-	mySetting: string;
+interface DisplayAliasWithFileTitleSettings {
+	aliasPositionedAboveFileName: boolean;
+	onlyShowFirstAlias: boolean;
 }
 
-const DEFAULT_SETTINGS: MyPluginSettings = {
-	mySetting: 'default'
+const DEFAULT_SETTINGS: DisplayAliasWithFileTitleSettings = {
+	aliasPositionedAboveFileName: false,
+	onlyShowFirstAlias: true
 }
 
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+export default class DisplayAliasWithFileTitlePlugin extends Plugin {
 
-	async onload() {
+	settings: DisplayAliasWithFileTitleSettings;
+	self = null;
+
+	public displayAliases() {
+
+		// get the File Explorer object
+		const fileExplorer = app.workspace.getLeavesOfType('file-explorer')[0];
+		
+		// TODO: add the same functionality to search results
+		//const search = app.workspace.getLeavesOfType('search')[0];
+
+		// get a list of all files and folders
+		let files = fileExplorer.view.fileItems;
+
+		for (const file of Object.values(files)) {
+
+			// check to make sure the object has a property called "aliases"
+			// this will ensure, for example, that folders, or files without aliases, do not get processed
+			if (app.metadataCache.getFileCache(file.file)?.frontmatter?.aliases) {
+
+				// get the DOM object containing the title (this will be used later)
+				const titleDiv = file.selfEl.querySelector('.tree-item-inner');
+				
+				// create the string variable with the aliases associated with a file (this will be used later)
+				let aliases = app.metadataCache.getFileCache(file.file)?.frontmatter?.aliases;
+
+				if (self.settings.onlyShowFirstAlias && Array.isArray(aliases) && aliases.length > 0) {
+					aliases = aliases[0];	// strip the array of all elements except the first item
+				}
+				
+				// if there is an existing DOM item displaying the alias, remove it
+				const aliasDiv = file.selfEl.querySelector('.file-alias');
+				if ( aliasDiv ) {
+					aliasDiv.remove();
+				}
+
+				// create a new DOM object (a div) containing the alias
+				// add the class `file-alias` so it can be identified as an alias
+				const newChild = file.selfEl.createEl('div', {text: aliases, cls: 'file-alias nav-file-title-content'});
+
+				if (self.settings.aliasPositionedAboveFileName) {
+					file.selfEl.prepend(newChild);			// move the alias above the title
+					titleDiv.classList.add("sub-text");		// make the title small
+				} else {
+					titleDiv.classList.remove("sub-text");	// make the title big
+					newChild.classList.add("sub-text");		// make the alias small
+				}
+
+				// if the title does not have an alias, remove the `sub-text` class
+				// this block will get executed when a file had an alias, but the alias was removed
+				if (aliases.length <= 0) {
+					titleDiv.classList.remove("sub-text");
+				}
+
+			}
+		}
+	}
+
+	public async onload() {
+		// since in JavaScript, `this` can't be used in a callback function, initialize `self` so it can access
+		// member variables from within the `displayAliases` method
+		self = this;
+		
 		await this.loadSettings();
 
-		// This creates an icon in the left ribbon.
-		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
-		});
-		// Perform additional things with the ribbon
-		ribbonIconEl.addClass('my-plugin-ribbon-class');
+		// adds the settings tab so the user can configure various aspects of the plugin
+		this.addSettingTab(new DisplayAliasWithFileTitleSettingTab(this.app, this));
 
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status Bar Text');
+		// call displayAliases on first use
+		this.app.workspace.onLayoutReady(this.displayAliases);
 
-		// This adds a simple command that can be triggered anywhere
-		this.addCommand({
-			id: 'open-sample-modal-simple',
-			name: 'Open sample modal (simple)',
-			callback: () => {
-				new SampleModal(this.app).open();
-			}
-		});
-		// This adds an editor command that can perform some operation on the current editor instance
-		this.addCommand({
-			id: 'sample-editor-command',
-			name: 'Sample editor command',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				console.log(editor.getSelection());
-				editor.replaceSelection('Sample Editor Command');
-			}
-		});
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
-		this.addCommand({
-			id: 'open-sample-modal-complex',
-			name: 'Open sample modal (complex)',
-			checkCallback: (checking: boolean) => {
-				// Conditions to check
-				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
-					if (!checking) {
-						new SampleModal(this.app).open();
-					}
-
-					// This command will only show up in Command Palette when the check function returns true
-					return true;
-				}
-			}
-		});
-
-		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SampleSettingTab(this.app, this));
-
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			console.log('click', evt);
-		});
-
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
+		// configure `displayAliases` to be each time a file's metadata is changed
+		this.registerEvent(this.app.metadataCache.on("changed", this.displayAliases));
 	}
 
-	onunload() {
-
+	public onunload() {
 	}
 
-	async loadSettings() {
+	public async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
 	}
 
-	async saveSettings() {
+	public async saveSettings() {
 		await this.saveData(this.settings);
+		this.displayAliases();
 	}
 }
 
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
-	}
+class DisplayAliasWithFileTitleSettingTab extends PluginSettingTab {
+	plugin: DisplayAliasWithFileTitlePlugin;
 
-	onOpen() {
-		const {contentEl} = this;
-		contentEl.setText('Woah!');
-	}
-
-	onClose() {
-		const {contentEl} = this;
-		contentEl.empty();
-	}
-}
-
-class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
-
-	constructor(app: App, plugin: MyPlugin) {
+	constructor(app: App, plugin: DisplayAliasWithFileTitlePlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
@@ -121,14 +114,25 @@ class SampleSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName('Setting #1')
-			.setDesc('It\'s a secret')
-			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue(this.plugin.settings.mySetting)
+			.setName('Alias Position')
+			.setDesc('Show aliases above file name.')
+			.addToggle(boolean => boolean
+				.setValue(this.plugin.settings.aliasPositionedAboveFileName)
 				.onChange(async (value) => {
-					this.plugin.settings.mySetting = value;
+					this.plugin.settings.aliasPositionedAboveFileName = value;
 					await this.plugin.saveSettings();
-				}));
+				})
+			);
+		
+		new Setting(containerEl)
+			.setName('Alias Arrays')
+			.setDesc('If a file has multiple aliases, only include the first alias.')
+			.addToggle(boolean => boolean
+				.setValue(this.plugin.settings.onlyShowFirstAlias)
+				.onChange(async (value) => {
+					this.plugin.settings.onlyShowFirstAlias = value;
+					await this.plugin.saveSettings();
+				})
+			);
 	}
 }

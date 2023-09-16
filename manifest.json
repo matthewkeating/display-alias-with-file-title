@@ -1,11 +1,10 @@
 {
-	"id": "sample-plugin",
-	"name": "Sample Plugin",
+	"id": "display-alias-with-file-title",
+	"name": "Display Alias with File Title",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "This is a sample plugin for Obsidian. This plugin demonstrates some of the capabilities of the Obsidian API.",
-	"author": "Obsidian",
-	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://obsidian.md/pricing",
+	"description": "This Obsidian plugin adds alias(es) defined in the file properties to the File Explorer..",
+	"author": "Matt Keating",
+	"authorUrl": "https://github.com/matthewkeating",
 	"isDesktopOnly": false
 }
