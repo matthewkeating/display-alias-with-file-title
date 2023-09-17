@@ -1,7 +1,7 @@
 {
 	"id": "display-alias-with-file-title",
 	"name": "Display Alias with File Title",
-	"version": "1.0.0",
+	"version": "1.1.0",
 	"minAppVersion": "0.15.0",
 	"description": "This Obsidian plugin adds alias(es) defined in the file properties to the File Explorer..",
 	"author": "Matt Keating",

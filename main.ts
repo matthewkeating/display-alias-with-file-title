@@ -1,13 +1,15 @@
 import { App, Plugin, PluginSettingTab, Setting } from 'obsidian';
 
 interface DisplayAliasWithFileTitleSettings {
-	aliasPositionedAboveFileName: boolean;
-	onlyShowFirstAlias: boolean;
+	hideFileTitle: boolean;
+	aliasOnTop: boolean;
+	firstAliasOnly: boolean;
 }
 
 const DEFAULT_SETTINGS: DisplayAliasWithFileTitleSettings = {
-	aliasPositionedAboveFileName: false,
-	onlyShowFirstAlias: true
+	hideFileTitle: false,
+	aliasOnTop: true,
+	firstAliasOnly: true
 }
 
 export default class DisplayAliasWithFileTitlePlugin extends Plugin {
@@ -25,20 +27,32 @@ export default class DisplayAliasWithFileTitlePlugin extends Plugin {
 
 		// get a list of all files and folders
 		let files = fileExplorer.view.fileItems;
-
+		
 		for (const file of Object.values(files)) {
 
 			// check to make sure the object has a property called "aliases"
 			// this will ensure, for example, that folders, or files without aliases, do not get processed
+			// files that have the aliases property with no values will still enter this loop (this is intentional)
 			if (app.metadataCache.getFileCache(file.file)?.frontmatter?.aliases) {
 
-				// get the DOM object containing the title (this will be used later)
-				const titleDiv = file.selfEl.querySelector('.tree-item-inner');
-				
-				// create the string variable with the aliases associated with a file (this will be used later)
+				// create the string variable with the aliases associated with a file
 				let aliases = app.metadataCache.getFileCache(file.file)?.frontmatter?.aliases;
 
-				if (self.settings.onlyShowFirstAlias && Array.isArray(aliases) && aliases.length > 0) {
+				// get the DOM object containing the title
+				const titleDiv = file.selfEl.querySelector('.tree-item-inner');
+
+				// if there are no aliases, remove the `sub-text` class
+				// this block will get executed immediately after the last alias was removed
+				if (aliases.length <= 0) {
+					titleDiv.classList.remove("sub-text");
+					titleDiv.classList.remove("hidden");
+					if (file.selfEl.querySelector('.file-alias')) {
+						file.selfEl.querySelector('.file-alias').remove();
+					}
+					continue;
+				}
+
+				if (self.settings.firstAliasOnly && Array.isArray(aliases) && aliases.length > 0) {
 					aliases = aliases[0];	// strip the array of all elements except the first item
 				}
 				
@@ -52,7 +66,7 @@ export default class DisplayAliasWithFileTitlePlugin extends Plugin {
 				// add the class `file-alias` so it can be identified as an alias
 				const newChild = file.selfEl.createEl('div', {text: aliases, cls: 'file-alias nav-file-title-content'});
 
-				if (self.settings.aliasPositionedAboveFileName) {
+				if (self.settings.aliasOnTop) {
 					file.selfEl.prepend(newChild);			// move the alias above the title
 					titleDiv.classList.add("sub-text");		// make the title small
 				} else {
@@ -60,12 +74,11 @@ export default class DisplayAliasWithFileTitlePlugin extends Plugin {
 					newChild.classList.add("sub-text");		// make the alias small
 				}
 
-				// if the title does not have an alias, remove the `sub-text` class
-				// this block will get executed when a file had an alias, but the alias was removed
-				if (aliases.length <= 0) {
-					titleDiv.classList.remove("sub-text");
+				if (self.settings.hideFileTitle) {
+					titleDiv.classList.add("hidden");
+				} else {
+					titleDiv.classList.remove("hidden");
 				}
-
 			}
 		}
 	}
@@ -103,6 +116,10 @@ export default class DisplayAliasWithFileTitlePlugin extends Plugin {
 class DisplayAliasWithFileTitleSettingTab extends PluginSettingTab {
 	plugin: DisplayAliasWithFileTitlePlugin;
 
+	private hideFileTitlesSetting: Setting;
+	private aliasOnTopSetting: Setting;
+	private firstAliasOnlySetting: Setting;
+
 	constructor(app: App, plugin: DisplayAliasWithFileTitlePlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
@@ -113,24 +130,47 @@ class DisplayAliasWithFileTitleSettingTab extends PluginSettingTab {
 
 		containerEl.empty();
 
-		new Setting(containerEl)
-			.setName('Alias Position')
-			.setDesc('Show aliases above file name.')
+		this.hideFileTitlesSetting = new Setting(containerEl)
+			.setName('Hide File Titles')
+			.setDesc('For any file that has an alias, hide the file title.')
 			.addToggle(boolean => boolean
-				.setValue(this.plugin.settings.aliasPositionedAboveFileName)
+				.setValue(this.plugin.settings.hideFileTitle)
 				.onChange(async (value) => {
-					this.plugin.settings.aliasPositionedAboveFileName = value;
+					this.plugin.settings.hideFileTitle = value;
+					if (value) {
+						this.plugin.settings.aliasOnTop = true;		// if the file title is hidden, the alias is, by definition, on top
+						this.aliasOnTopSetting.setDisabled(true);
+					}
+					await this.plugin.saveSettings();
+					this.display();
+				})
+			);
+
+		
+		this.aliasOnTopSetting = new Setting(containerEl)
+			.setName('Alias On Top')
+			.setDesc('Show aliases above file title (note: this will be true if file titles are being hidden).')
+			.addToggle(boolean => boolean
+				.setValue(this.plugin.settings.aliasOnTop)
+				.onChange(async (value) => {
+					this.plugin.settings.aliasOnTop = value;
 					await this.plugin.saveSettings();
 				})
 			);
+	
+		// the option to put the alias on top of the title does not make sense if the title is hidden
+		// the statement below will disable the 'Alias on Top' option if 'Hide File Titles' is true
+		if (this.plugin.settings.hideFileTitle){
+			this.aliasOnTopSetting.setDisabled(true);
+		}
 		
-		new Setting(containerEl)
-			.setName('Alias Arrays')
+		this.firstAliasOnlySetting = new Setting(containerEl)
+			.setName('First Alias Only')
 			.setDesc('If a file has multiple aliases, only include the first alias.')
 			.addToggle(boolean => boolean
-				.setValue(this.plugin.settings.onlyShowFirstAlias)
+				.setValue(this.plugin.settings.firstAliasOnly)
 				.onChange(async (value) => {
-					this.plugin.settings.onlyShowFirstAlias = value;
+					this.plugin.settings.firstAliasOnly = value;
 					await this.plugin.saveSettings();
 				})
 			);
